@@ -134,6 +134,9 @@ class Processo(Base):
     assunto: str = ""
     orgao_julgador: str = ""
     comarca: str = ""
+    # Consulta pública do próprio tribunal, quando o diário informa. Nem todos
+    # informam, então trate como opcional.
+    link: str = ""
     valor_causa: float | None = None
     data_ajuizamento: datetime | None = None
     data_ultima_movimentacao: date | None = None

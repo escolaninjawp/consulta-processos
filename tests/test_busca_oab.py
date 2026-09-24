@@ -68,3 +68,18 @@ def test_periodo_chega_a_fonte():
 def test_sem_publicacoes_devolve_lista_vazia():
     with patch("consulta_processos.fontes.comunica.publicacoes_por_oab", return_value=[]):
         assert buscar_por_oab("123456", "MG") == []
+
+
+def test_leva_o_link_do_tribunal_para_o_processo():
+    """O diário informa o endereço da consulta pública do tribunal; é o que vira
+    o link clicável na tela."""
+    com_link = _pub("5010754-07.2024.8.13.0625", 10)
+    com_link.link = "https://www4.tjmg.jus.br/juridico/sf/proc_resultado2.jsp?x=1"
+    sem_link = _pub("4000180-71.2026.8.26.0604", 12)
+    with patch("consulta_processos.fontes.comunica.publicacoes_por_oab",
+               return_value=[com_link, sem_link]):
+        processos = buscar_por_oab("123456", "MG")
+    por_numero = {p.numero: p for p in processos}
+    assert por_numero["5010754-07.2024.8.13.0625"].link.startswith("https://www4.tjmg.jus.br")
+    # tribunal que não informa link não pode ganhar um endereço inventado
+    assert por_numero["4000180-71.2026.8.26.0604"].link == ""

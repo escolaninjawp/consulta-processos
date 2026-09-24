@@ -87,6 +87,8 @@ def _processo_das_publicacoes(cnj: CNJ, publicacoes: list[Publicacao]) -> Proces
         segmento=cnj.nome_segmento,
         classe=primeira.classe,
         orgao_julgador=primeira.orgao,
+        # a publicação mais recente que tiver link manda; nem todo tribunal informa
+        link=next((pub.link for pub in recentes if pub.link), ""),
         data_ultima_movimentacao=primeira.data_disponibilizacao,
         partes=list(partes.values()),
         advogados=list(advogados.values()),  # type: ignore[arg-type]
@@ -101,6 +103,8 @@ def _juntar_publicacoes(processo: Processo, publicacoes: list[Publicacao]) -> No
     """Acrescenta as publicações ao processo vindo do Datajud, sem duplicar."""
     processo.publicacoes = sorted(publicacoes,
                                   key=lambda p: p.data_disponibilizacao or date.min, reverse=True)
+    if not processo.link:
+        processo.link = next((pub.link for pub in processo.publicacoes if pub.link), "")
     if Fonte.COMUNICA not in processo.fontes:
         processo.fontes.append(Fonte.COMUNICA)
 

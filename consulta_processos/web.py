@@ -127,6 +127,12 @@ PAGINA = """<!DOCTYPE html>
     background: var(--fundo); padding: 12px; border-radius: 8px; margin: 8px 0 0;
   }
   .vazio { color: var(--suave); font-size: 14px; }
+  a.externo {
+    color: var(--destaque); text-decoration: none;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  a.externo:hover { text-decoration: underline; }
+  a.externo svg { width: 13px; height: 13px; flex-shrink: 0; opacity: .75; }
   @media (max-width: 560px) {
     dl.campos { grid-template-columns: 1fr; gap: 2px 0; }
     dl.campos dd { margin-bottom: 8px; }
@@ -252,6 +258,19 @@ function dataBR(iso) {
   return d ? `${d}/${m}/${a}` : '';
 }
 
+// Link para a consulta pública do próprio tribunal, quando o diário informa.
+// Sem link, devolve só o texto — não vale inventar endereço de tribunal.
+function comLink(texto, url, titulo) {
+  const conteudo = escapar(texto);
+  if (!url) return conteudo;
+  return `<a href="${escapar(url)}" target="_blank" rel="noopener noreferrer"
+     class="externo" title="${escapar(titulo || 'Abrir no site do tribunal')}">${conteudo}<svg
+     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     ><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><path
+     d="M15 3h6v6"/><path d="M10 14L21 3"/></svg></a>`;
+}
+
 function carregando(mensagem) {
   saida.innerHTML = `<div class="caixa"><div class="carregando">
     <div class="bolinha"></div><div>${escapar(mensagem)}</div></div></div>`;
@@ -314,7 +333,7 @@ function desenharProcesso(p) {
   saida.innerHTML = `
     <div class="caixa cabecalho">
       <h2>${escapar(p.classe || 'Processo')}</h2>
-      <div class="numero">${escapar(p.numero)}</div>
+      <div class="numero">${comLink(p.numero, p.link, "Abrir este processo no site do tribunal")}</div>
       <div class="etiquetas">
         ${(p.fontes || []).map(f => `<span class="etiqueta">${escapar(f)}</span>`).join('')}
       </div>
@@ -353,7 +372,7 @@ formularios.oab.addEventListener('submit', async e => {
     saida.innerHTML = `<div class="caixa">
       <h3 class="secao">${lista.length} processo(s)</h3>
       <ul class="lista">${lista.map(p => `<li>
-        <span class="data">${escapar(p.numero)}</span> &nbsp; ${escapar(p.tribunal || '')}
+        <span class="data">${comLink(p.numero, p.link)}</span> &nbsp; ${escapar(p.tribunal || '')}
         <br>${escapar(p.classe || '')}
         ${p.orgao_julgador ? `<br><span class="vazio">${escapar(p.orgao_julgador)}</span>` : ''}
       </li>`).join('')}</ul></div>`;
@@ -375,7 +394,7 @@ formularios.diario.addEventListener('submit', async e => {
       <h3 class="secao">${lista.length} publicação(ões)</h3>
       <ul class="lista">${lista.map(pub => `<li>
         <span class="data">${dataBR(pub.data_disponibilizacao)}</span> &nbsp;
-        <span class="data">${escapar(pub.numero_processo || '')}</span>
+        <span class="data">${comLink(pub.numero_processo || '', pub.link)}</span>
         <br>${escapar(pub.tipo_comunicacao || '')} ${pub.orgao ? '&middot; ' + escapar(pub.orgao) : ''}
         ${pub.texto ? `<details><summary>ver o teor</summary><p>${escapar(pub.texto)}</p></details>` : ''}
       </li>`).join('')}</ul></div>`;
