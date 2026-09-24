@@ -1,12 +1,68 @@
 """Configuração da biblioteca.
 
-Tudo vem de variáveis de ambiente (ou do `.env`, se você usar python-dotenv).
+Tudo vem do arquivo `.env` da pasta onde você está, ou de variáveis de ambiente.
 Nenhuma credencial fica no código — veja `.env.exemplo`.
 """
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
+
+_env_carregado = False
+
+# Chave pública do Datajud, divulgada pelo próprio CNJ na documentação da API:
+# https://datajud-wiki.cnj.jus.br/api-publica/acesso
+# Fica aqui para a biblioteca funcionar assim que instalada, sem configuração.
+# É a mesma chave para todo mundo, e qualquer uma sua substitui esta.
+CHAVE_PUBLICA_DATAJUD = "cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw=="
+
+
+def carregar_env(caminho: str | os.PathLike | None = None, *, forcar: bool = False) -> Path | None:
+    """Lê o `.env` e coloca o que estiver nele no ambiente. Devolve o arquivo usado.
+
+    Procura na pasta atual e sobe até três níveis, para funcionar também quando
+    você roda de dentro de uma subpasta do projeto. O que já estiver definido no
+    ambiente tem preferência: variável de verdade manda no arquivo.
+
+    Sem dependência externa — o formato é simples o bastante para ler aqui.
+    """
+    global _env_carregado
+    if _env_carregado and not forcar and caminho is None:
+        return None
+
+    if caminho is not None:
+        arquivo = Path(caminho)
+    else:
+        arquivo = None
+        partida = Path.cwd()
+        for pasta in [partida, *list(partida.parents)[:3]]:
+            candidato = pasta / ".env"
+            if candidato.is_file():
+                arquivo = candidato
+                break
+
+    _env_carregado = True
+    if arquivo is None or not arquivo.is_file():
+        return None
+
+    try:
+        linhas = arquivo.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return None
+
+    for linha in linhas:
+        linha = linha.strip()
+        if not linha or linha.startswith("#") or "=" not in linha:
+            continue
+        if linha.startswith("export "):          # tolera o formato de shell
+            linha = linha[len("export "):]
+        nome, _, valor = linha.partition("=")
+        nome = nome.strip()
+        valor = valor.strip().strip('"').strip("'")
+        if nome and not os.environ.get(nome):
+            os.environ[nome] = valor
+    return arquivo
 
 
 def _env(nome: str, padrao: str = "") -> str:
@@ -82,11 +138,12 @@ class Config:
 
     @classmethod
     def do_ambiente(cls) -> Config:
+        carregar_env()          # o .env da pasta, se houver, antes de ler o ambiente
         proxies_raw = _env("CONSULTA_PROXIES")
         separados = proxies_raw.replace(";", ",").replace("\n", ",").split(",")
         proxies = [p.strip() for p in separados if p.strip()]
         return cls(
-            datajud_api_key=_env("DATAJUD_API_KEY"),
+            datajud_api_key=_env("DATAJUD_API_KEY") or CHAVE_PUBLICA_DATAJUD,
             datajud_timeout=_env_float("DATAJUD_TIMEOUT", 90.0),
             datajud_tentativas=_env_int("DATAJUD_TENTATIVAS", 3),
             comunica_timeout=_env_float("COMUNICA_TIMEOUT", 12.0),

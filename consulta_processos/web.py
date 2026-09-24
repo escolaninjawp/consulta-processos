@@ -12,16 +12,21 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import webbrowser
 from datetime import date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 from .api import buscar_por_oab, consultar_processo, publicacoes_por_oab
-from .config import Config
+from .config import CHAVE_PUBLICA_DATAJUD, Config, carregar_env
 from .erros import ConsultaError
 
 logger = logging.getLogger(__name__)
+
+# O .env em uso — a tela grava nele o que você preencher
+ARQUIVO_ENV: Path | None = None
 
 PAGINA = """<!DOCTYPE html>
 <html lang="pt-BR">
@@ -164,9 +169,18 @@ PAGINA = """<!DOCTYPE html>
         <input id="oab-uf" placeholder="MG" maxlength="2" autocomplete="off" required></div>
       <div><label for="oab-tribunal">Tribunal (opcional)</label>
         <input id="oab-tribunal" placeholder="TJMG" autocomplete="off"></div>
+      <div style="flex:0 1 160px;"><label for="oab-dias">Período</label>
+        <select id="oab-dias">
+          <option value="30">Últimos 30 dias</option>
+          <option value="60">Últimos 60 dias</option>
+          <option value="90">Últimos 90 dias</option>
+          <option value="180">Últimos 180 dias</option>
+        </select></div>
       <button class="acao" type="submit">Buscar</button>
     </div>
-    <p class="aviso">Sem informar o tribunal, a busca varre todos &mdash; demora bem mais.</p>
+    <p class="aviso">Traz os processos em que essa OAB foi publicada no diário durante o
+      período &mdash; não a carteira inteira. A API pública do Datajud não informa os
+      advogados do processo, então o diário é o único caminho.</p>
   </form>
 
   <form class="caixa" id="f-diario" hidden>
@@ -188,6 +202,29 @@ PAGINA = """<!DOCTYPE html>
   </form>
 
   <div id="saida"></div>
+
+  <details class="caixa" id="config" style="margin-top:26px;">
+    <summary style="cursor:pointer; font-size:14px; font-weight:600;">Configuração</summary>
+    <div style="margin-top:16px;">
+      <div style="margin-bottom:14px;">
+        <label for="cfg-chave">Chave da API do Datajud</label>
+        <input id="cfg-chave" type="password" autocomplete="off"
+               placeholder="deixe em branco para usar a chave pública do CNJ">
+        <p class="aviso" id="cfg-chave-estado"></p>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label for="cfg-proxies">Proxies (um por linha)</label>
+        <textarea id="cfg-proxies" rows="3" spellcheck="false"
+          style="width:100%; padding:11px 12px; font-size:14px; font-family:ui-monospace,Consolas,monospace;
+                 border:1px solid var(--linha); border-radius:8px; background:var(--fundo); color:var(--texto);"
+          placeholder="http://usuario:senha@host:porta&#10;socks5h://usuario:senha@host:porta"></textarea>
+        <p class="aviso">Opcional. O diário do CNJ recusa acessos de fora do Brasil e limita
+          consultas por IP &mdash; é para esses casos. Rodando do Brasil, deixe em branco.</p>
+      </div>
+      <button class="acao" type="button" id="cfg-salvar">Salvar</button>
+      <span class="aviso" id="cfg-recado" style="margin-left:10px;"></span>
+    </div>
+  </details>
 </main>
 
 <script>
@@ -300,14 +337,19 @@ function desenharProcesso(p) {
 // ── Processos por OAB ───────────────────────────────────────────────────────
 formularios.oab.addEventListener('submit', async e => {
   e.preventDefault();
-  carregando('Consultando o Datajud… sem tribunal informado, pode demorar vários minutos.');
+  carregando('Consultando o diário eletrônico…');
   try {
     const lista = await pedir('/api/oab', {
       numero: $('#oab-numero').value.trim(),
       uf: $('#oab-uf').value.trim(),
       tribunal: $('#oab-tribunal').value.trim(),
+      dias: Number($('#oab-dias').value),
     });
-    if (!lista.length) { mostrarErro('Nenhum processo encontrado para essa inscrição.'); return; }
+    if (!lista.length) {
+      mostrarErro('Nenhuma publicação dessa inscrição no período. Tente um período maior, '
+                  + 'ou confira o número e a UF.');
+      return;
+    }
     saida.innerHTML = `<div class="caixa">
       <h3 class="secao">${lista.length} processo(s)</h3>
       <ul class="lista">${lista.map(p => `<li>
@@ -340,6 +382,40 @@ formularios.diario.addEventListener('submit', async e => {
   } catch (erro) { mostrarErro(erro.message); }
 });
 
+// ── Configuração: chave e proxy ─────────────────────────────────────────────
+function mostrarConfig(d) {
+  $('#cfg-proxies').value = d.proxies || '';
+  const estado = $('#cfg-chave-estado');
+  if (d.chave_e_a_publica) {
+    estado.textContent = 'Usando a chave pública do CNJ, que já vem embutida. '
+      + 'Preencha aqui só se tiver uma chave própria.';
+  } else if (d.chave_definida) {
+    estado.textContent = 'Uma chave própria está configurada' + (d.arquivo ? ` (${d.arquivo})` : '') + '.';
+  } else {
+    estado.textContent = 'Nenhuma chave configurada.';
+  }
+}
+
+fetch('/api/configuracao').then(r => r.json()).then(d => { if (d.ok) mostrarConfig(d.dado); });
+
+$('#cfg-salvar').addEventListener('click', async () => {
+  const botao = $('#cfg-salvar'), recado = $('#cfg-recado');
+  botao.disabled = true; recado.textContent = 'salvando…'; recado.className = 'aviso';
+  try {
+    const d = await pedir('/api/configuracao', {
+      datajud_api_key: $('#cfg-chave').value.trim(),
+      proxies: $('#cfg-proxies').value,
+    });
+    $('#cfg-chave').value = '';
+    recado.textContent = `Salvo em ${d.salvo_em}. `
+      + (d.proxies ? `${d.proxies} proxy(s) em uso. ` : 'Sem proxy. ')
+      + 'Já vale nas próximas consultas.';
+    fetch('/api/configuracao').then(r => r.json()).then(x => { if (x.ok) mostrarConfig(x.dado); });
+  } catch (erro) {
+    recado.textContent = erro.message; recado.className = 'aviso erro';
+  } finally { botao.disabled = false; }
+});
+
 $('#numero').focus();
 </script>
 </body>
@@ -368,8 +444,48 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
         if self.path in ("/", "/index.html"):
             self._responder(200, PAGINA.encode("utf-8"), "text/html; charset=utf-8")
+        elif self.path == "/api/configuracao":
+            cfg = self.config
+            self._json({"ok": True, "dado": {
+                # a chave volta mascarada: a tela só precisa saber que existe
+                "chave_definida": bool(cfg.datajud_api_key),
+                "chave_e_a_publica": cfg.datajud_api_key == CHAVE_PUBLICA_DATAJUD,
+                "proxies": "\n".join(cfg.proxies),
+                "arquivo": str(ARQUIVO_ENV) if ARQUIVO_ENV else "",
+            }})
         else:
             self._responder(404, b"nao encontrado", "text/plain; charset=utf-8")
+
+    def _salvar_configuracao(self, corpo: dict) -> dict:
+        """Grava chave e proxies no .env da pasta e passa a usá-los na hora."""
+        global ARQUIVO_ENV
+        chave = str(corpo.get("datajud_api_key", "")).strip()
+        proxies = [linha.strip() for linha in str(corpo.get("proxies", "")).splitlines()
+                   if linha.strip() and not linha.strip().startswith("#")]
+
+        destino = ARQUIVO_ENV or (Path.cwd() / ".env")
+        valores = {}
+        if destino.is_file():
+            for linha in destino.read_text(encoding="utf-8").splitlines():
+                if "=" in linha and not linha.strip().startswith("#"):
+                    nome, _, valor = linha.partition("=")
+                    valores[nome.strip()] = valor.strip()
+        if chave:
+            valores["DATAJUD_API_KEY"] = chave
+        valores["CONSULTA_PROXIES"] = ",".join(proxies)
+        destino.write_text(
+            "# Escrito pela tela de Consulta de Processos.\n"
+            + "".join(f"{nome}={valor}\n" for nome, valor in valores.items()),
+            encoding="utf-8")
+        ARQUIVO_ENV = destino
+
+        # vale já nesta sessão, sem reiniciar
+        if chave:
+            os.environ["DATAJUD_API_KEY"] = chave
+        os.environ["CONSULTA_PROXIES"] = ",".join(proxies)
+        _Handler.config = Config.do_ambiente()
+        return {"salvo_em": str(destino), "proxies": len(proxies),
+                "chave_definida": bool(_Handler.config.datajud_api_key)}
 
     def do_POST(self):  # noqa: N802
         try:
@@ -384,9 +500,13 @@ class _Handler(BaseHTTPRequestHandler):
                 processo = consultar_processo(str(corpo.get("numero", "")), config=self.config)
                 self._json({"ok": True, "dado": processo.to_dict() if processo else None})
             elif self.path == "/api/oab":
-                achados = buscar_por_oab(str(corpo.get("numero", "")), str(corpo.get("uf", "")),
-                                         tribunal=str(corpo.get("tribunal", "")), config=self.config)
+                achados = buscar_por_oab(
+                    str(corpo.get("numero", "")), str(corpo.get("uf", "")),
+                    tribunal=str(corpo.get("tribunal", "")),
+                    dias=max(1, min(int(corpo.get("dias") or 30), 180)), config=self.config)
                 self._json({"ok": True, "dado": [p.to_dict() for p in achados]})
+            elif self.path == "/api/configuracao":
+                self._json({"ok": True, "dado": self._salvar_configuracao(corpo)})
             elif self.path == "/api/publicacoes":
                 dias = max(1, min(int(corpo.get("dias") or 7), 90))
                 hoje = date.today()
@@ -407,6 +527,8 @@ class _Handler(BaseHTTPRequestHandler):
 
 def servir(porta: int = 8765, *, abrir: bool = True, config: Config | None = None) -> int:
     """Sobe a tela em http://localhost:<porta> e, por padrão, abre o navegador."""
+    global ARQUIVO_ENV
+    ARQUIVO_ENV = carregar_env() or ARQUIVO_ENV
     _Handler.config = config or Config.do_ambiente()
     endereco = f"http://localhost:{porta}"
 

@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 
 from .cnj import CNJ
 from .config import Config, config_padrao
@@ -152,10 +152,38 @@ def existe(numero: str, *, config: Config | None = None) -> tuple[bool, str]:
     return False, ""
 
 
-def buscar_por_oab(oab_numero: str, oab_uf: str, *, tribunal: str = "",
-                   config: Config | None = None) -> list[Processo]:
-    """Processos de um advogado, pelo Datajud. Informe o tribunal quando souber."""
-    return datajud.buscar_por_oab(oab_numero, oab_uf, tribunal=tribunal, config=config)
+def buscar_por_oab(oab_numero: str, oab_uf: str, *, tribunal: str = "", dias: int = 30,
+                   paginas: int = 1, config: Config | None = None) -> list[Processo]:
+    """Processos em que a OAB apareceu no diário, no período.
+
+    Vai pelo DJEN, e não pelo Datajud: a API pública do Datajud não publica os
+    advogados do processo — os documentos dela têm apenas classe, assunto, órgão,
+    datas e movimentos. Procurar advogado lá devolve sempre vazio.
+
+    A consequência é que este caminho enxerga o que foi publicado no período, não
+    a carteira inteira do advogado. Aumente `dias` para alcançar mais.
+    """
+    cfg = config or config_padrao()
+    cliente = Cliente(cfg)
+    fim = date.today()
+    publicacoes = comunica.publicacoes_por_oab(
+        oab_numero, oab_uf, inicio=fim - timedelta(days=max(1, dias)), fim=fim,
+        paginas=paginas, config=cfg, cliente=cliente)
+
+    alvo = tribunal.strip().upper()
+    agrupadas: dict[str, list[Publicacao]] = {}
+    for publicacao in publicacoes:
+        cnj = CNJ(publicacao.numero_processo or "")
+        if not cnj.valido:
+            continue
+        if alvo and cnj.tribunal != alvo:
+            continue
+        agrupadas.setdefault(cnj.formatado, []).append(publicacao)
+
+    processos = [_processo_das_publicacoes(CNJ(numero), lista)
+                 for numero, lista in agrupadas.items()]
+    processos.sort(key=lambda p: p.data_ultima_movimentacao or date.min, reverse=True)
+    return processos
 
 
 def publicacoes_por_oab(oab_numero: str, oab_uf: str, *, inicio: date | None = None,

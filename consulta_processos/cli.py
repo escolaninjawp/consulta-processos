@@ -70,7 +70,7 @@ def _cmd_processo(args) -> int:
 
 
 def _cmd_oab(args) -> int:
-    processos = buscar_por_oab(args.numero, args.uf, tribunal=args.tribunal)
+    processos = buscar_por_oab(args.numero, args.uf, tribunal=args.tribunal, dias=args.dias)
     if args.json:
         print(json.dumps([p.to_dict() for p in processos], ensure_ascii=False, indent=2))
         return 0
@@ -124,7 +124,8 @@ def main(argv: list[str] | None = None) -> int:
     o = sub.add_parser("oab", parents=[comum], help="processos de um advogado (Datajud)")
     o.add_argument("numero", help="número da inscrição")
     o.add_argument("uf", help="UF da inscrição, ex.: MG")
-    o.add_argument("--tribunal", default="", help="limita a um tribunal, ex.: TJMG (bem mais rápido)")
+    o.add_argument("--tribunal", default="", help="limita a um tribunal, ex.: TJMG")
+    o.add_argument("--dias", type=int, default=30, help="janela de publicações (padrão: 30)")
     o.add_argument("--json", action="store_true")
     o.set_defaults(func=_cmd_oab)
 

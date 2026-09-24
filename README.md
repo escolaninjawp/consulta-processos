@@ -6,8 +6,8 @@ Duas fontes, ambas oficiais e públicas do CNJ:
 
 | Fonte | O que traz | Chave |
 |---|---|---|
-| **Datajud** | Metadados do processo (classe, assunto, órgão, valor, partes) e todo o histórico de movimentos, inclusive os internos, que não saem no diário | Chave pública, publicada pelo CNJ |
-| **Comunica / DJEN** | As publicações do Diário de Justiça Eletrônico Nacional, com o teor completo do ato, as partes e os advogados | Não precisa |
+| **Datajud** | Metadados do processo (classe, assunto, órgão julgador, grau, datas) e todo o histórico de movimentos, inclusive os internos, que não saem no diário. **Não traz partes nem advogados** — a API pública não publica esses campos | Chave pública, já embutida |
+| **Comunica / DJEN** | As publicações do Diário de Justiça Eletrônico Nacional, com o teor completo do ato, as partes e os advogados. É a única fonte pública que permite procurar por OAB | Não precisa |
 
 As duas se completam: o Datajud tem o histórico mais completo, mas demora alguns dias para indexar; o DJEN publica no dia seguinte ao ato, e é por ele que se acompanha prazo.
 
@@ -24,8 +24,10 @@ Python 3.10 ou mais novo.
 
 ## Primeiro uso
 
+Não precisa configurar nada para começar: a chave do Datajud é pública, o CNJ a divulga na [documentação da API](https://datajud-wiki.cnj.jus.br/api-publica/acesso) e ela já vem embutida. Se um dia você tiver uma chave própria, ou precisar de proxy, copie o modelo e preencha — o arquivo `.env` é lido sozinho, da pasta onde você estiver:
+
 ```bash
-cp .env.exemplo .env      # e preencha DATAJUD_API_KEY
+cp .env.exemplo .env
 ```
 
 ### Pela tela, no navegador
@@ -72,9 +74,20 @@ Tudo é dataclass: `processo.to_dict()` devolve um dicionário pronto para virar
 consulta-processos web                 # a tela no navegador
 consulta-processos processo 1000254-20.2025.8.13.0079
 consulta-processos processo 1000254-20.2025.8.13.0079 --json > processo.json
-consulta-processos oab 123456 MG --tribunal TJMG
+consulta-processos oab 123456 MG --dias 60 --tribunal TJMG
 consulta-processos publicacoes 123456 MG --dias 7
 ```
+
+## Procurar pelo advogado: por que vem do diário
+
+A API pública do Datajud **não publica os advogados nem as partes** do processo. Os documentos dela têm apenas número, classe, assunto, órgão julgador, grau, datas e a lista de movimentos. Procurar advogado ali devolve zero, sempre — não é falta de chave nem erro de consulta.
+
+Quem indexa OAB é o diário (DJEN). Então `buscar_por_oab` reúne as publicações daquela inscrição no período e agrupa por processo. Duas consequências:
+
+- o resultado é **o que saiu publicado no período**, não a carteira inteira do advogado. Um processo parado há meses não aparece: aumente `dias` para alcançar mais;
+- as partes e os advogados vêm da publicação, que costuma trazê-los completos.
+
+Sabendo o número do processo, `consultar_processo` junta as duas fontes e aí sim o histórico fica completo.
 
 ## O que dá para fazer
 
@@ -94,8 +107,8 @@ processo = consultar_processo("1000254-20.2025.8.13.0079")
 # 3. Só checar se já existe — útil para processo recém-distribuído
 achou, fonte = existe("1000254-20.2025.8.13.0079")
 
-# 4. Carteira de um advogado (informe o tribunal: sem ele, varre todos e demora)
-processos = buscar_por_oab("123456", "MG", tribunal="TJMG")
+# 4. Processos em que a OAB foi publicada no período (vem do diário, não do Datajud)
+processos = buscar_por_oab("123456", "MG", dias=60, tribunal="TJMG")
 
 # 5. Publicações da semana — é assim que se monta o controle de prazos
 hoje = date.today()

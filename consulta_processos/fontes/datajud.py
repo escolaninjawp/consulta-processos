@@ -19,7 +19,7 @@ import time
 from datetime import datetime
 from datetime import timezone as dt_timezone
 
-from ..cnj import CNJ, todos_os_tribunais
+from ..cnj import CNJ
 from ..config import Config, config_padrao
 from ..erros import ChaveAusente, FonteIndisponivel, NumeroInvalido
 from ..http import Cliente
@@ -33,8 +33,10 @@ URL_BASE = "https://api-publica.datajud.cnj.jus.br"
 def _cabecalhos(cfg: Config) -> dict:
     if not cfg.datajud_api_key:
         raise ChaveAusente(
-            "Defina DATAJUD_API_KEY. A chave pública está na documentação do CNJ: "
-            "https://datajud-wiki.cnj.jus.br/api-publica/acesso"
+            "Falta a chave do Datajud. Crie um arquivo chamado .env na pasta do projeto "
+            "(copie o .env.exemplo) e preencha a linha DATAJUD_API_KEY=. A chave é pública "
+            "e o CNJ a divulga em https://datajud-wiki.cnj.jus.br/api-publica/acesso — "
+            "depois reinicie a consulta."
         )
     return {"Authorization": f"ApiKey {cfg.datajud_api_key}", "Content-Type": "application/json"}
 
@@ -224,37 +226,3 @@ def consultar_processo(numero: str, *, config: Config | None = None,
     if not hits:
         return None
     return montar_processo(hits[0].get("_source") or {}, cnj)
-
-
-def buscar_por_oab(oab_numero: str, oab_uf: str, *, tribunal: str = "",
-                   limite_por_tribunal: int = 100, config: Config | None = None,
-                   cliente: Cliente | None = None) -> list[Processo]:
-    """Processos em que a OAB informada aparece como advogado.
-
-    Sem `tribunal`, varre todos os índices — são dezenas de consultas, leva minutos.
-    Informe o tribunal (ex.: "TJMG") sempre que souber onde procurar.
-    """
-    cfg = config or config_padrao()
-    cliente = cliente or Cliente(cfg)
-    alvos = [tribunal.upper()] if tribunal else todos_os_tribunais()
-    payload = {
-        "size": limite_por_tribunal,
-        "query": {"bool": {"must": [
-            {"match": {"advogados.oab": re.sub(r"\D", "", oab_numero)}},
-            {"match": {"advogados.uf": oab_uf.upper()}},
-        ]}},
-    }
-
-    encontrados: list[Processo] = []
-    for sigla in alvos:
-        try:
-            dados = _consultar(f"api_publica_{sigla.lower()}", payload, cfg, cliente)
-        except FonteIndisponivel as e:
-            logger.warning("[datajud] %s indisponível: %s", sigla, e)
-            continue
-        for hit in (dados.get("hits") or {}).get("hits") or []:
-            fonte = hit.get("_source") or {}
-            numero = CNJ(fonte.get("numeroProcesso") or "")
-            if numero.valido:
-                encontrados.append(montar_processo(fonte, numero))
-    return encontrados
