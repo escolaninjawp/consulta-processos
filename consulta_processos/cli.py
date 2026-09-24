@@ -19,6 +19,19 @@ from .erros import ConsultaError
 from .modelos import Processo
 
 
+def _saida_em_utf8() -> None:
+    """Evita quebrar no console do Windows, que por padrão não é UTF-8.
+
+    Nomes de parte, "×" e acentos derrubariam o comando com UnicodeEncodeError
+    num `cmd` comum. Caracteres que o console não souber desenhar viram "?".
+    """
+    for fluxo in (sys.stdout, sys.stderr):
+        try:
+            fluxo.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):       # saída redirecionada para outro lugar
+            pass
+
+
 def _imprimir_processo(processo: Processo, movimentos: int) -> None:
     print(f"\n{processo.numero}  ·  {processo.tribunal}  ·  {processo.segmento}")
     print(f"{processo.titulo}")
@@ -84,6 +97,7 @@ def _cmd_publicacoes(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _saida_em_utf8()
     parser = argparse.ArgumentParser(
         prog="consulta-processos",
         description="Busca e consulta de processos judiciais nas fontes públicas (Datajud e DJEN).",

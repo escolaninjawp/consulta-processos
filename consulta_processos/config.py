@@ -38,8 +38,12 @@ class Config:
 
     # ── Datajud (API pública do CNJ) ──────────────────────────────────────────
     datajud_api_key: str = ""
-    datajud_timeout: float = 30.0
-    datajud_timeout_conexao: float = 5.0
+    # O Datajud costuma responder em segundos, mas em horário cheio passa de um
+    # minuto (ele mesmo informa o tempo gasto no campo "took" da resposta). Por
+    # isso a espera padrão é generosa. Em tela, onde alguém está esperando, passe
+    # um tempo curto: `consultar_processo(..., timeout=12)` cai logo no diário.
+    datajud_timeout: float = 90.0
+    datajud_timeout_conexao: float = 10.0
 
     # ── Comunica / DJEN (API pública do CNJ) ──────────────────────────────────
     comunica_timeout: float = 12.0
@@ -75,7 +79,7 @@ class Config:
         proxies = [p.strip() for p in separados if p.strip()]
         return cls(
             datajud_api_key=_env("DATAJUD_API_KEY"),
-            datajud_timeout=_env_float("DATAJUD_TIMEOUT", 30.0),
+            datajud_timeout=_env_float("DATAJUD_TIMEOUT", 90.0),
             comunica_timeout=_env_float("COMUNICA_TIMEOUT", 12.0),
             comunica_tamanho_pagina=_env_int("COMUNICA_TAMANHO_PAGINA", 100),
             proxies=proxies,

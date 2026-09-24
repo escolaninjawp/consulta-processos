@@ -97,6 +97,13 @@ except FonteIndisponivel as e:
     print("tente de novo mais tarde:", e)
 ```
 
+O Datajud é público e gratuito, e em horário cheio chega a levar mais de um minuto por consulta (ele informa o tempo gasto no campo `took` da própria resposta). Por isso a espera padrão é de 90 segundos. Em tela, com alguém esperando, use um tempo curto e deixe o diário responder primeiro:
+
+```python
+from consulta_processos.fontes import datajud
+processo = datajud.consultar_processo(numero, timeout=12)   # desiste rápido
+```
+
 `FonteIndisponivel` significa que a API não respondeu — vale repetir. Já `None` como retorno significa que as fontes responderam e o processo não existe nelas: repetir não adianta (a não ser que ele acabe de ser distribuído).
 
 ## Configuração
