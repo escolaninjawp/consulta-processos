@@ -97,7 +97,16 @@ def _consultar(indice: str, payload: dict, cfg: Config, cliente: Cliente,
 # ── leitura da resposta ──────────────────────────────────────────────────────
 
 def _movimentos(bruto: list[dict]) -> list[Movimentacao]:
+    """Lê os movimentos e dá a cada um um identificador que não se repete.
+
+    O mesmo tribunal registra, no mesmo segundo, dois atos com o mesmo código
+    (duas juntadas, por exemplo). Código + data não bastam: quem gravar num
+    banco com chave única acabaria descartando o segundo ato em silêncio. Por
+    isso a descrição entra no identificador e, se ainda assim repetir, o
+    seguinte ganha um sufixo.
+    """
     movimentacoes = []
+    usados: dict[str, int] = {}
     for mov in bruto or []:
         data_str = mov.get("dataHora") or ""
         descricao = mov.get("nome") or mov.get("descricao") or ""
@@ -110,12 +119,12 @@ def _movimentos(bruto: list[dict]) -> list[Movimentacao]:
         if quando.tzinfo is None:                      # algumas bases devolvem sem fuso
             quando = quando.replace(tzinfo=dt_timezone.utc)
         codigo = str(mov.get("codigo", "0"))
-        if codigo == "0":
-            # Sem código: usa data + resumo da descrição para não duplicar o mesmo ato
-            resumo = hashlib.md5(descricao[:100].encode()).hexdigest()[:8]
-            id_externo = f"s_{data_str[:10]}_{resumo}"
-        else:
-            id_externo = f"{codigo}_{data_str[:19]}"
+        resumo = hashlib.md5(descricao[:100].encode()).hexdigest()[:8]
+        id_externo = f"{codigo}_{data_str[:19]}_{resumo}"
+        vezes = usados.get(id_externo, 0) + 1
+        usados[id_externo] = vezes
+        if vezes > 1:                      # dois atos idênticos no mesmo segundo
+            id_externo = f"{id_externo}_{vezes}"
         complementos = [
             f"{c.get('nome', '')}: {c.get('descricao', '')}".strip(": ")
             for c in mov.get("complementosTabelados") or []

@@ -55,9 +55,9 @@ def test_cada_movimentacao_tem_identificador_estavel():
     processo = montar_processo(RESPOSTA, CNJ("1000254-20.2025.8.13.0079"))
     ids = [m.id_externo for m in processo.movimentacoes]
     assert len(ids) == len(set(ids))                       # não duplica
-    # Movimento sem código recebe um id derivado da data + descrição
+    # O id junta código, data e um resumo da descrição
     sem_codigo = next(m for m in processo.movimentacoes if m.descricao.startswith("Ato ordinatório"))
-    assert sem_codigo.id_externo.startswith("s_2025-09-01_")
+    assert sem_codigo.id_externo.startswith("0_2025-09-01T10:00:00_")
     # Rodar de novo dá exatamente o mesmo id (é o que evita duplicar na segunda consulta)
     de_novo = montar_processo(RESPOSTA, CNJ("1000254-20.2025.8.13.0079"))
     assert [m.id_externo for m in de_novo.movimentacoes] == ids
@@ -84,3 +84,16 @@ def test_to_dict_vira_json():
     texto = json.dumps(processo.to_dict(), ensure_ascii=False)
     assert "CLIENTE EXEMPLO" in texto
     assert '"fonte": "datajud"' in texto
+
+
+def test_dois_atos_no_mesmo_segundo_nao_perdem_o_identificador():
+    """O tribunal registra duas juntadas no mesmo segundo — as duas têm de sobreviver."""
+    resposta = {**RESPOSTA, "movimentos": [
+        {"codigo": 51, "nome": "Juntada de petição", "dataHora": "2025-03-01T11:00:00.000Z"},
+        {"codigo": 51, "nome": "Juntada de petição", "dataHora": "2025-03-01T11:00:00.000Z"},
+        {"codigo": 51, "nome": "Juntada de documento", "dataHora": "2025-03-01T11:00:00.000Z"},
+    ]}
+    processo = montar_processo(resposta, CNJ("1000254-20.2025.8.13.0079"))
+    ids = [m.id_externo for m in processo.movimentacoes]
+    assert len(processo.movimentacoes) == 3      # nenhuma se perde
+    assert len(set(ids)) == 3                    # e cada uma tem id próprio
