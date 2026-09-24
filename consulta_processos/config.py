@@ -44,6 +44,10 @@ class Config:
     # um tempo curto: `consultar_processo(..., timeout=12)` cai logo no diário.
     datajud_timeout: float = 90.0
     datajud_timeout_conexao: float = 10.0
+    # O Datajud limita requisições seguidas e devolve HTTP 429. Vale esperar e
+    # tentar de novo: costuma liberar em poucos segundos.
+    datajud_tentativas: int = 3
+    datajud_espera_retry: float = 3.0
 
     # ── Comunica / DJEN (API pública do CNJ) ──────────────────────────────────
     comunica_timeout: float = 12.0
@@ -80,6 +84,7 @@ class Config:
         return cls(
             datajud_api_key=_env("DATAJUD_API_KEY"),
             datajud_timeout=_env_float("DATAJUD_TIMEOUT", 90.0),
+            datajud_tentativas=_env_int("DATAJUD_TENTATIVAS", 3),
             comunica_timeout=_env_float("COMUNICA_TIMEOUT", 12.0),
             comunica_tamanho_pagina=_env_int("COMUNICA_TAMANHO_PAGINA", 100),
             proxies=proxies,

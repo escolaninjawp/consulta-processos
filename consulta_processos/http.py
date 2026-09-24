@@ -66,10 +66,21 @@ def cabecalhos_navegador(origem: str = "", referer: str = "", extra_ua: str = ""
 class Resposta:
     """Resposta simples, igual para curl_cffi e httpx."""
 
-    def __init__(self, status: int, texto: str = "", sem_conexao: bool = False):
+    def __init__(self, status: int, texto: str = "", sem_conexao: bool = False,
+                 cabecalhos: dict | None = None):
         self.status = status
         self.texto = texto
         self.sem_conexao = sem_conexao      # nenhum proxy chegou a responder
+        self.cabecalhos = cabecalhos or {}
+
+    @property
+    def esperar_segundos(self) -> float | None:
+        """Quanto a fonte pediu para esperar (cabeçalho Retry-After)."""
+        valor = self.cabecalhos.get("retry-after") or self.cabecalhos.get("Retry-After")
+        try:
+            return float(valor) if valor else None
+        except (TypeError, ValueError):
+            return None
 
     @property
     def ok(self) -> bool:
@@ -164,7 +175,7 @@ class Cliente:
             tempo = httpx.Timeout(timeout, connect=timeout_conexao)
             with httpx.Client(timeout=tempo) as cliente:
                 r = cliente.post(url, json=payload, headers=cabecalhos)
-                return Resposta(r.status_code, r.text)
+                return Resposta(r.status_code, r.text, cabecalhos=dict(r.headers))
         except httpx.TimeoutException:
             return Resposta(504, "", sem_conexao=True)
         except Exception as e:

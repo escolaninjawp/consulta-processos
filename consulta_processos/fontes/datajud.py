@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import time
 from datetime import datetime
 from datetime import timezone as dt_timezone
 
@@ -58,15 +59,39 @@ def classificar_tipo(descricao: str) -> TipoMovimentacao:
 
 def _consultar(indice: str, payload: dict, cfg: Config, cliente: Cliente,
                timeout: float | None = None) -> dict:
-    resposta = cliente.post_json(
-        f"{URL_BASE}/{indice}/_search", payload, _cabecalhos(cfg),
-        timeout or cfg.datajud_timeout, cfg.datajud_timeout_conexao,
-    )
-    if resposta.status == 200:
-        return resposta.json()
-    if resposta.status in (401, 403):
-        raise FonteIndisponivel("Datajud", "chave de API recusada", resposta.status)
-    raise FonteIndisponivel("Datajud", status=resposta.status)
+    """Consulta um índice do Datajud, insistindo quando a API pede calma.
+
+    O Datajud limita requisições seguidas (HTTP 429) e, em horário cheio,
+    demora ou devolve erro de servidor. Nesses casos vale esperar e repetir —
+    é diferente de "chave recusada" ou "processo não existe", que não adianta
+    insistir.
+    """
+    url = f"{URL_BASE}/{indice}/_search"
+    cabecalhos = _cabecalhos(cfg)
+    espera = cfg.datajud_espera_retry
+    ultima = None
+
+    for tentativa in range(1, max(1, cfg.datajud_tentativas) + 1):
+        resposta = cliente.post_json(url, payload, cabecalhos,
+                                     timeout or cfg.datajud_timeout, cfg.datajud_timeout_conexao)
+        if resposta.status == 200:
+            return resposta.json()
+        if resposta.status in (401, 403):
+            raise FonteIndisponivel("Datajud", "chave de API recusada", resposta.status)
+        if resposta.status not in (429, 504) and resposta.status < 500:
+            raise FonteIndisponivel("Datajud", status=resposta.status)
+
+        ultima = resposta
+        if tentativa < cfg.datajud_tentativas:
+            pausa = resposta.esperar_segundos or espera
+            motivo = "limite de requisições" if resposta.status == 429 else f"HTTP {resposta.status}"
+            logger.info("[datajud] %s — esperando %.0fs e tentando de novo (%d/%d)",
+                        motivo, pausa, tentativa, cfg.datajud_tentativas)
+            time.sleep(pausa)
+            espera *= 2                       # cada nova espera é o dobro da anterior
+
+    raise FonteIndisponivel("Datajud", "não respondeu depois de várias tentativas",
+                            ultima.status if ultima else None)
 
 
 # ── leitura da resposta ──────────────────────────────────────────────────────
