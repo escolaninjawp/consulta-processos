@@ -96,6 +96,11 @@ def _cmd_publicacoes(args) -> int:
     return 0
 
 
+def _cmd_web(args) -> int:
+    from .web import servir
+    return servir(args.porta, abrir=not args.sem_abrir)
+
+
 def main(argv: list[str] | None = None) -> int:
     _saida_em_utf8()
     parser = argparse.ArgumentParser(
@@ -130,6 +135,11 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--paginas", type=int, default=1, help="páginas a buscar (0 = todas)")
     d.add_argument("--json", action="store_true")
     d.set_defaults(func=_cmd_publicacoes)
+
+    w = sub.add_parser("web", parents=[comum], help="abre a tela de consulta no navegador")
+    w.add_argument("--porta", type=int, default=8765, help="porta do servidor (padrão: 8765)")
+    w.add_argument("--sem-abrir", action="store_true", help="não abre o navegador sozinho")
+    w.set_defaults(func=_cmd_web)
 
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING,

@@ -130,14 +130,22 @@ def _buscar(params: dict, cfg: Config, cliente: Cliente) -> tuple[list[dict], in
     esgotado, proxies esgotados): vale tentar de novo. Já uma resposta 200 com lista
     vazia significa que realmente não há publicação — não adianta insistir.
     """
-    resposta = cliente.get(URL_API, params, timeout=cfg.comunica_timeout,
-                           origem=ORIGEM, referer=REFERER)
-    if resposta.ok:
-        dados = resposta.json()
-        return dados.get("items") or [], int(dados.get("count") or 0), True
-    if resposta.status in (400, 404):
-        return [], 0, True
-    logger.warning("[comunica] resposta HTTP %s", resposta.status)
+    espera = cfg.comunica_espera_retry
+    for tentativa in range(1, max(1, cfg.comunica_tentativas) + 1):
+        resposta = cliente.get(URL_API, params, timeout=cfg.comunica_timeout,
+                               origem=ORIGEM, referer=REFERER)
+        if resposta.ok:
+            dados = resposta.json()
+            return dados.get("items") or [], int(dados.get("count") or 0), True
+        if resposta.status in (400, 404):
+            return [], 0, True
+        # 5xx e tempo esgotado são instabilidade do serviço, não resposta: o DJEN
+        # oscila bastante ao longo do dia e costuma voltar em poucos segundos.
+        logger.warning("[comunica] resposta HTTP %s (tentativa %s de %s)",
+                       resposta.status, tentativa, cfg.comunica_tentativas)
+        if tentativa < cfg.comunica_tentativas:
+            time.sleep(resposta.esperar_segundos or espera)
+            espera *= 2
     return [], 0, False
 
 

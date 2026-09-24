@@ -28,6 +28,25 @@ Python 3.10 ou mais novo.
 cp .env.exemplo .env      # e preencha DATAJUD_API_KEY
 ```
 
+### Pela tela, no navegador
+
+Quem não trabalha com terminal pode usar a tela:
+
+```bash
+consulta-processos web
+```
+
+O navegador abre sozinho em `http://localhost:8765`, com três abas: consultar um processo pelo número, listar os processos de um advogado pela OAB e ver as publicações do diário no período. O resultado aparece formatado, com partes, advogados, movimentações e o teor de cada publicação.
+
+O servidor roda **só na sua máquina** — ninguém de fora acessa, e as consultas continuam indo direto do seu computador às fontes do CNJ. Não instala nada além da própria biblioteca: a página é um arquivo único, sem buscar nada na internet. Para fechar, volte ao terminal e pressione Ctrl+C.
+
+```bash
+consulta-processos web --porta 9000    # se a 8765 estiver ocupada
+consulta-processos web --sem-abrir     # não abre o navegador sozinho
+```
+
+### Pelo código
+
 ```python
 from consulta_processos import consultar_processo
 
@@ -50,6 +69,7 @@ Tudo é dataclass: `processo.to_dict()` devolve um dicionário pronto para virar
 ### Na linha de comando
 
 ```bash
+consulta-processos web                 # a tela no navegador
 consulta-processos processo 1000254-20.2025.8.13.0079
 consulta-processos processo 1000254-20.2025.8.13.0079 --json > processo.json
 consulta-processos oab 123456 MG --tribunal TJMG

@@ -52,6 +52,10 @@ class Config:
     # ── Comunica / DJEN (API pública do CNJ) ──────────────────────────────────
     comunica_timeout: float = 12.0
     comunica_tamanho_pagina: int = 100
+    # O DJEN oscila ao longo do dia e devolve 5xx por alguns segundos. Repetir
+    # resolve quase sempre; uma resposta 200 com lista vazia não é repetida.
+    comunica_tentativas: int = 3
+    comunica_espera_retry: float = 2.0
 
     # ── Proxies (opcional) ────────────────────────────────────────────────────
     # A API do Comunica é do gov.br e costuma recusar requisições vindas de fora
@@ -87,6 +91,8 @@ class Config:
             datajud_tentativas=_env_int("DATAJUD_TENTATIVAS", 3),
             comunica_timeout=_env_float("COMUNICA_TIMEOUT", 12.0),
             comunica_tamanho_pagina=_env_int("COMUNICA_TAMANHO_PAGINA", 100),
+            comunica_tentativas=_env_int("COMUNICA_TENTATIVAS", 3),
+            comunica_espera_retry=_env_float("COMUNICA_ESPERA_RETRY", 2.0),
             proxies=proxies,
             gateway_host=_env("CONSULTA_GATEWAY_HOST"),
             gateway_login=_env("CONSULTA_GATEWAY_LOGIN"),
